@@ -3,7 +3,7 @@
 import { io } from "socket.io-client";
 
 const socket = io(
-  "http://192.168.1.71:5000"
+  "https://video-call-app1009192.onrender.com"
 );
 
 export default socket;
