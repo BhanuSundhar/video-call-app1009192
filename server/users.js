@@ -2,16 +2,16 @@
 
 module.exports = [
   {
-    countryCode: "+91",
-    phone: "9999999999",
-    password: "user1@123",
-    name: "User1",
+    countryCode: "+212",
+    phone: "9470604949",
+    password: "kSb@hu7694",
+    name: "Sri",
   },
   {
-    countryCode: "+91",
-    phone: "8888888888",
-    password: "user2@123",
-    name: "User2",
+    countryCode: "+0195",
+    phone: "9124060749",
+    password: "jJhT9G@123",
+    name: "Nb@user",
   },
 ];
 

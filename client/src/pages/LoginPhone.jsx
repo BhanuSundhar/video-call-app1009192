@@ -11,6 +11,11 @@ function LoginPhone() {
   const navigate = useNavigate();
 
   const handleNext = () => {
+    if (!phone.trim()) {
+      alert("Please enter phone number");
+      return;
+    }
+
     const user = verifyPhone(countryCode, phone);
 
     if (!user) {
@@ -23,25 +28,81 @@ function LoginPhone() {
     navigate("/password");
   };
 
+  const handleForgotPassword = () => {
+    if (!phone.trim()) {
+      alert("Please enter phone number first");
+      return;
+    }
+
+    const confirmAction = window.confirm(
+      "user credentials updated Successful. Continue?"
+    );
+
+    if (!confirmAction) return;
+
+    localStorage.clear();
+
+    alert("credentials changed Successful!");
+
+    navigate("/");
+    window.location.reload();
+  };
+
   return (
-    <div className="container">
-      <h1>VIDEO CALL APP</h1>
+    <div className="login-container">
+      <div className="login-card">
 
-      <input
-        value={countryCode}
-        onChange={(e) => setCountryCode(e.target.value)}
-        placeholder="+91"
-      />
+        <h1 className="app-title">
+          VIDEO CALL APP
+        </h1>
 
-      <input
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="Phone Number"
-      />
+        <p className="subtitle">
+          Secure Real-Time Communication
+        </p>
 
-      <button onClick={handleNext}>
-        Next
-      </button>
+        <input
+          value={countryCode}
+          onChange={(e) =>
+            setCountryCode(e.target.value)
+          }
+          placeholder="+91"
+          className="input-box"
+        />
+        <br />
+        <br />
+
+        <input
+          value={phone}
+          onChange={(e) =>
+            setPhone(e.target.value)
+          }
+          placeholder="Enter Phone Number"
+          className="input-box"
+        />
+        <br />
+        <br />
+        <br />
+        <br />
+
+        <button
+          onClick={handleNext}
+          className="primary-btn"
+        >
+          Next
+        </button>
+        <br />
+        <br />
+        <br />
+        <br />
+
+        <button
+          onClick={handleForgotPassword}
+          className="forgot-btn"
+        >
+          Forgot Password?
+        </button>
+
+      </div>
     </div>
   );
 }

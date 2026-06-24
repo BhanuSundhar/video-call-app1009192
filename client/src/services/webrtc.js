@@ -9,8 +9,6 @@ export const configuration = {
 };
 
 export const createPeerConnection = () => {
-  return new RTCPeerConnection(
-    configuration
-  );
+  return new RTCPeerConnection(configuration);
 };
 

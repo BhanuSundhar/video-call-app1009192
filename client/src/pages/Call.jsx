@@ -1,382 +1,355 @@
 
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import socket from "../services/socket";
-import {
-  createPeerConnection,
-} from "../services/webrtc";
+import { createPeerConnection } from "../services/webrtc";
 
 function Call() {
+  const navigate = useNavigate();
 
   const localVideoRef = useRef(null);
-  const peerRef = useRef(null);
-  const navigate = useNavigate();
   const remoteVideoRef = useRef(null);
 
-      const endCall = () => {
+  const peerRef = useRef(null);
+  const localStreamRef = useRef(null);
 
-      const targetSocketId =
-        localStorage.getItem(
-          "targetSocketId"
-        );
+  const pendingIceCandidatesRef = useRef([]);
+  const offerHandledRef = useRef(false);
+  const answerHandledRef = useRef(false);
 
-      socket.emit(
-        "end-call",
-        {
-          to:
-            targetSocketId,
-        }
-      );
+  const [micOn, setMicOn] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(false);
+  const [videoOn, setVideoOn] = useState(true);
 
-      if (
-        localVideoRef.current
-          ?.srcObject
-      ) {
+  const stopStreams = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
 
-        localVideoRef.current
-          .srcObject
-          .getTracks()
-          .forEach(
-            (track) =>
-              track.stop()
-          );
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
 
-      }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+  };
 
-      navigate( "/dashboard" );
+  const closePeerConnection = () => {
+    if (peerRef.current) {
+      peerRef.current.ontrack = null;
+      peerRef.current.onicecandidate = null;
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+  };
 
-    };
+  const cleanupCall = () => {
+    offerHandledRef.current = false;
+    answerHandledRef.current = false;
+    pendingIceCandidatesRef.current = [];
+
+    stopStreams();
+    closePeerConnection();
+
+    localStorage.removeItem("createOffer");
+    localStorage.removeItem("targetSocketId");
+  };
+
+  const toggleMic = () => {
+    if (!localStreamRef.current) return;
+
+    const next = !micOn;
+
+    localStreamRef.current.getAudioTracks().forEach((track) => {
+      track.enabled = next;
+    });
+
+    setMicOn(next);
+  };
+
+  const toggleSpeaker = () => {
+    const next = !speakerOn;
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !next;
+    }
+
+    setSpeakerOn(next);
+  };
+
+  const toggleVideo = () => {
+    if (!localStreamRef.current) return;
+
+    const next = !videoOn;
+
+    localStreamRef.current.getVideoTracks().forEach((track) => {
+      track.enabled = next;
+    });
+
+    setVideoOn(next);
+  };
+
+  const endCall = () => {
+    const targetSocketId = localStorage.getItem("targetSocketId");
+
+    if (targetSocketId) {
+      socket.emit("end-call", {
+        to: targetSocketId,
+      });
+    }
+
+    cleanupCall();
+    navigate("/dashboard");
+  };
 
   useEffect(() => {
-    console.log("CALL PAGE OPENED");
+    let mounted = true;
+
+    const handleIceCandidate = async (data) => {
+      try {
+        if (!peerRef.current || !data?.candidate) return;
+
+        if (!peerRef.current.remoteDescription) {
+          pendingIceCandidatesRef.current.push(data.candidate);
+          return;
+        }
+
+        await peerRef.current.addIceCandidate(
+          new RTCIceCandidate(data.candidate)
+        );
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    const handleOffer = async (data) => {
+      try {
+        if (!peerRef.current) return;
+        if (offerHandledRef.current) return;
+        if (peerRef.current.signalingState !== "stable") return;
+
+        offerHandledRef.current = true;
+        localStorage.setItem("targetSocketId", data.from);
+
+        await peerRef.current.setRemoteDescription(
+          new RTCSessionDescription(data.offer)
+        );
+
+        const answer = await peerRef.current.createAnswer();
+        await peerRef.current.setLocalDescription(answer);
+
+        socket.emit("answer", {
+          answer,
+          to: data.from,
+        });
+
+        for (const candidate of pendingIceCandidatesRef.current) {
+          try {
+            await peerRef.current.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+          } catch (e) {
+            console.log(e);
+          }
+        }
+
+        pendingIceCandidatesRef.current = [];
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    const handleAnswer = async (data) => {
+      try {
+        if (!peerRef.current) return;
+        if (answerHandledRef.current) return;
+        if (peerRef.current.signalingState !== "have-local-offer") return;
+
+        answerHandledRef.current = true;
+
+        await peerRef.current.setRemoteDescription(
+          new RTCSessionDescription(data.answer)
+        );
+
+        for (const candidate of pendingIceCandidatesRef.current) {
+          try {
+            await peerRef.current.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+          } catch (e) {
+            console.log(e);
+          }
+        }
+
+        pendingIceCandidatesRef.current = [];
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    const handleCallEnded = () => {
+      cleanupCall();
+      navigate("/dashboard");
+    };
 
     const startMedia = async () => {
-      let stream = null;
       try {
-
-        console.log(
-          "Secure:",
-          window.isSecureContext
-        );
-
-        console.log(
-          "MediaDevices:",
-          navigator.mediaDevices
-        );
-
-        if ( !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          console.log("Camera API not available");
-          alert("Camera API not available...")
-        }
-        else{
-          console.log("Camera API available");
-          alert("Camera API AVAILABLE...")
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera API not available");
         }
 
-        if ( navigator.mediaDevices &&  navigator.mediaDevices.getUserMedia ) {
-          stream =
-            await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: true,
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+
+        if (!mounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        localStreamRef.current = stream;
+
+        // default mic OFF
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = false;
+        });
+        setMicOn(false);
+        setSpeakerOn(false);
+        setVideoOn(true);
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+
+        peerRef.current = createPeerConnection();
+        offerHandledRef.current = false;
+        answerHandledRef.current = false;
+        pendingIceCandidatesRef.current = [];
+
+        stream.getTracks().forEach((track) => {
+          peerRef.current.addTrack(track, stream);
+        });
+
+        peerRef.current.onicecandidate = (event) => {
+          if (!event.candidate) return;
+
+          const targetSocketId = localStorage.getItem("targetSocketId");
+          if (targetSocketId) {
+            socket.emit("ice-candidate", {
+              candidate: event.candidate,
+              to: targetSocketId,
             });
-        }
-
-        if (  stream && localVideoRef.current ) {
-          localVideoRef.current.srcObject =
-            stream;
-        }
-
-        peerRef.current =
-          createPeerConnection();
-        
-        peerRef.current.ontrack = (event) => { 
-          console.log( "REMOTE STREAM RECEIVED" );
-          console.log("EVENT = ",event);
-
-          if (
-            remoteVideoRef.current
-          ) {
-
-            remoteVideoRef.current.srcObject =
-              event.streams[0];
-
           }
         };
 
-        if (stream) {
+        peerRef.current.ontrack = (event) => {
+          const remoteStream = event.streams?.[0];
+          if (!remoteStream || !remoteVideoRef.current) return;
 
-          stream.getTracks().forEach(
-            (track) => {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play().catch(() => {});
+        };
 
-              console.log(
-                "ADDING TRACK:",
-                track.kind
-              );
+        socket.on("ice-candidate", handleIceCandidate);
+        socket.on("offer", handleOffer);
+        socket.on("answer", handleAnswer);
+        socket.on("call-ended", handleCallEnded);
 
-              peerRef.current.addTrack(
-                track,
-                stream
-              );
+        const shouldCreateOffer = localStorage.getItem("createOffer");
+        if (shouldCreateOffer === "true") {
+          localStorage.removeItem("createOffer");
 
-            }
-          );
+          const targetSocketId = localStorage.getItem("targetSocketId");
+          if (!targetSocketId) {
+            throw new Error("Target socket not found");
+          }
 
+          const offer = await peerRef.current.createOffer();
+          await peerRef.current.setLocalDescription(offer);
+
+          socket.emit("offer", {
+            offer,
+            to: targetSocketId,
+          });
         }
-
-        peerRef.current.onicecandidate =
-          (event) => {
-
-            if (event.candidate) {
-
-              const targetSocketId =
-                localStorage.getItem(
-                  "targetSocketId"
-                );
-
-              console.log(
-                "ICE SENT"
-              );
-
-              socket.emit(
-                "ice-candidate",
-                {
-                  candidate:
-                    event.candidate,
-                  to:
-                    targetSocketId,
-                }
-              );
-            }
-          };
-
-        socket.on(
-          "ice-candidate",
-          async (data) => {
-
-            try {
-
-              await peerRef.current
-                .addIceCandidate(
-                  data.candidate
-                );
-
-              console.log(
-                "ICE RECEIVED"
-              );
-
-            } catch (err) {
-
-              console.log(err);
-
-            }
-          }
-        );
-
-        console.log("REGISTERING OFFER LISTENER" );
-        socket.on(
-          "offer",
-          async (data) => {
-
-            alert("OFFER EVENT HIT");
-            console.log("OFFER EVENT HIT");
-            console.log( "Offer Received" );
-            alert("Offer Received");
-
-            await peerRef.current
-            .setRemoteDescription(
-              new RTCSessionDescription(
-                data.offer
-              )
-            );
-
-            alert("Creating answer.......ANSWER")
-            const answer =
-              await peerRef.current
-                .createAnswer();
-            alert("ANSWER CREATED");
-
-            await peerRef.current
-              .setLocalDescription(
-                answer
-              );
-
-            socket.emit(
-              "answer",
-              {
-                answer,
-                to: data.from,
-              }
-            );
-
-            console.log(
-              "Answer Sent"
-            );
-            alert("Answer sent");
-          }
-        );
-
-        socket.on(
-          "answer",
-          async (data) => {
-
-            console.log(
-              "Answer Received"
-            );
-            alert("Answer Received");
-
-            await peerRef.current
-            .setRemoteDescription(
-              new RTCSessionDescription(
-                data.answer
-              )
-            );
-          }
-        );
-
-        socket.on(
-          "call-ended",
-          () => {
-
-            alert(
-              "Call Ended"
-            );
-
-            if (
-              localVideoRef.current
-                ?.srcObject
-            ) {
-
-              localVideoRef
-                .current
-                .srcObject
-                .getTracks()
-                .forEach(
-                  (track) =>
-                    track.stop()
-                );
-
-            }
-
-            navigate(
-              "/dashboard"
-            );
-
-          }
-        );
-        const shouldCreateOffer =
-          localStorage.getItem(
-            "createOffer"
-          );
-
-        if ( shouldCreateOffer === "true" && !peerRef.current.localDescription ) {
-
-          localStorage.removeItem(
-            "createOffer"
-          );
-
-          const targetSocketId =
-            localStorage.getItem(
-              "targetSocketId"
-            );
-
-          console.log(
-            "TARGET SOCKET:",
-            targetSocketId
-          );
-
-          console.log(
-            "Creating Offer"
-          );
-          alert("Creating offer");
-
-          console.log("CREATE OFFER START");
-          const offer =
-            await peerRef.current.createOffer();
-
-          await peerRef.current.setLocalDescription( offer );
-          console.log("LOCAL DESCRIPTION SET");
-
-          socket.emit(
-            "offer",
-            {
-              offer,
-              to:
-                targetSocketId,
-            }
-          );
-
-          console.log(
-            "Offer Sent"
-          );
-        }
-
       } catch (error) {
-
-        console.log(error);
-
-        alert(
-          error.name +
-          "\n" +
-          error.message
-        );
-
+        console.error(error);
+        alert(error.message || "Call setup failed");
       }
     };
 
     startMedia();
 
     return () => {
-
-      socket.off("offer");
-      socket.off("answer");
-      socket.off(
-        "ice-candidate"
-      );
-
+      mounted = false;
+      socket.off("ice-candidate", handleIceCandidate);
+      socket.off("offer", handleOffer);
+      socket.off("answer", handleAnswer);
+      socket.off("call-ended", handleCallEnded);
+      cleanupCall();
     };
-
-  }, []);
+  }, [navigate]);
 
   return (
-    <div
-      style={{
-        textAlign: "center",
-        padding: "20px",
-      }}
-    >
-      <h1>
-        Call Screen
-      </h1>
+    <div className="call-layout">
+      <div className="call-stage glass">
+        <div className="call-header">
+          <div className="call-title">
+            <h1>Live Call</h1>
+            <p>Secure peer-to-peer video room</p>
+          </div>
 
-      <video
-        ref={localVideoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: "500px",
-          border:
-            "2px solid black",
-        }}
-      />
+          <div className="pill">
+            <span className="pill-dot" />
+            Connected live
+          </div>
+        </div>
 
-      <h2>Remote Video</h2>
+        <div className="call-grid">
+          <div className="video-card">
+            <div className="video-head">Your video</div>
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="video-box"
+            />
+          </div>
 
-      <video
-        ref={remoteVideoRef}
-        autoPlay
-        playsInline
-        style={{
-          width: "500px",
-          border: "2px solid red",
-        }}
-      />
+          <div className="video-card">
+            <div className="video-head">Remote video</div>
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              className="video-box"
+            />
+          </div>
+        </div>
 
-      <br />
-      <br />
+        <div className="call-controls">
+          <button className="control-btn" onClick={toggleVideo}>
+            {videoOn ? "📷 Video ON" : "🚫 Video OFF"}
+          </button>
 
-      <button  onClick={ endCall} > End Call </button>
+          <button className="control-btn" onClick={toggleMic}>
+            {micOn ? "🎤 Mic ON" : "🎤 Mic OFF"}
+          </button>
+
+          <button className="control-btn" onClick={toggleSpeaker}>
+            {speakerOn ? "🔊 Speaker ON" : "🔇 Speaker OFF"}
+          </button>
+
+          <button className="control-btn danger" onClick={endCall}>
+            End Call
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
