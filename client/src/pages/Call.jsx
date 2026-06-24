@@ -59,34 +59,41 @@ function Call() {
   };
 
   const toggleMic = () => {
+    console.log("MIC CLICKED");
+
     if (!localStreamRef.current) return;
 
     const next = !micOn;
 
     localStreamRef.current.getAudioTracks().forEach((track) => {
       track.enabled = next;
+      console.log("AUDIO TRACK ENABLED:", track.enabled);
     });
 
     setMicOn(next);
   };
 
   const toggleSpeaker = () => {
+    if (!remoteVideoRef.current) return;
+
     const next = !speakerOn;
 
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = !next;
-    }
+    remoteVideoRef.current.muted = !next;
+    remoteVideoRef.current.volume = next ? 1 : 0;
 
     setSpeakerOn(next);
   };
 
   const toggleVideo = () => {
+    console.log("VIDEO CLICKED");
+
     if (!localStreamRef.current) return;
 
     const next = !videoOn;
 
     localStreamRef.current.getVideoTracks().forEach((track) => {
       track.enabled = next;
+      console.log("VIDEO TRACK ENABLED:", track.enabled);
     });
 
     setVideoOn(next);
@@ -110,6 +117,9 @@ function Call() {
 
     const handleIceCandidate = async (data) => {
       try {
+        console.log(
+          "ICE RECEIVED"
+        );
         if (!peerRef.current || !data?.candidate) return;
 
         if (!peerRef.current.remoteDescription) {
@@ -164,6 +174,13 @@ function Call() {
 
     const handleAnswer = async (data) => {
       try {
+        console.log(
+          "ANSWER RECEIVED"
+        );
+
+        console.log(
+          peerRef.current.signalingState
+        );
         if (!peerRef.current) return;
         if (answerHandledRef.current) return;
         if (peerRef.current.signalingState !== "have-local-offer") return;
@@ -247,11 +264,44 @@ function Call() {
         };
 
         peerRef.current.ontrack = (event) => {
-          const remoteStream = event.streams?.[0];
-          if (!remoteStream || !remoteVideoRef.current) return;
 
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play().catch(() => {});
+          console.log("REMOTE TRACK RECEIVED");
+
+          const remoteStream = event.streams[0];
+
+          if (!remoteStream) {
+            console.log("NO REMOTE STREAM");
+            return;
+          }
+
+          console.log(
+            "REMOTE TRACKS:",
+            remoteStream.getTracks()
+          );
+
+          if (remoteVideoRef.current) {
+
+            if (
+              remoteVideoRef.current.srcObject !==
+              remoteStream
+            ) {
+
+              remoteVideoRef.current.srcObject =
+                remoteStream;
+
+              remoteVideoRef.current
+                .play()
+                .then(() =>
+                  console.log(
+                    "REMOTE VIDEO PLAYING"
+                  )
+                )
+                .catch(console.error);
+
+            }
+
+          }
+
         };
 
         socket.on("ice-candidate", handleIceCandidate);
@@ -327,6 +377,8 @@ function Call() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              muted={false}
+              controls
               className="video-box"
             />
           </div>

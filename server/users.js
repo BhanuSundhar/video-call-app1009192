@@ -13,5 +13,11 @@ module.exports = [
     password: "jJhT9G@123",
     name: "Nb@user",
   },
+  {
+    countryCode: "+061601",
+    phone: "9097931045",
+    password: "Jiyatv@9075",
+    name: "ubB@users",
+  },
 ];
 

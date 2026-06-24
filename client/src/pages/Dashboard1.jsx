@@ -9,7 +9,9 @@ function Dashboard() {
   const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
 
-  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const [currentUser] = useState(() =>
+    JSON.parse(localStorage.getItem("user") || "null")
+  );
 
   const handleLogout = () => {
     socket.disconnect();
@@ -69,16 +71,32 @@ function Dashboard() {
       socket.off("call-accepted", handleCallAccepted);
       socket.off("call-rejected", handleCallRejected);
     };
-  }, [currentUser, navigate]);
+  }, [navigate] );
 
   const filteredUsers = useMemo(() => {
-    return users
-      .filter((u) => u.phone !== currentUser?.phone)
-      .filter((u) =>
-        `${u.name || ""} ${u.phone || ""}`
-          .toLowerCase()
-          .includes(search.toLowerCase())
+
+    let visibleUsers = [];
+
+    if (currentUser?.role === "admin") {
+
+      visibleUsers = users.filter(
+        (u) => u.phone !== currentUser.phone
       );
+
+    } else {
+
+      visibleUsers = users.filter(
+        (u) => u.role === "admin"
+      );
+
+    }
+
+    return visibleUsers.filter((u) =>
+      `${u.name || ""} ${u.phone || ""}`
+        .toLowerCase()
+        .includes(search.toLowerCase())
+    );
+
   }, [users, currentUser, search]);
 
   const callUser = (user) => {
@@ -111,7 +129,7 @@ function Dashboard() {
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
             <div className="pill">
               <span className="pill-dot" />
-              {users.length} online
+              1 online
             </div>
 
             <button className="action-btn secondary" onClick={handleLogout}>
@@ -130,7 +148,7 @@ function Dashboard() {
 
               <div className="stat-card">
                 <div className="label">Available users</div>
-                <div className="value">{filteredUsers.length}</div>
+                <div className="value">1</div>
               </div>
             </div>
 
@@ -164,7 +182,7 @@ function Dashboard() {
                 <div className="empty-state">No users found.</div>
               ) : (
                 filteredUsers.map((user) => (
-                  <div className="user-card" key={user.socketId}>
+                  <div className="user-card" key={user.phone}>
                     <div className="user-info">
                       <p className="user-name">{user.name}</p>
                       <div className="user-meta">{user.phone}</div>
