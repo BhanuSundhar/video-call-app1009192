@@ -77,10 +77,8 @@ function Call() {
     if (!remoteVideoRef.current) return;
 
     const next = !speakerOn;
-
     remoteVideoRef.current.muted = !next;
     remoteVideoRef.current.volume = next ? 1 : 0;
-
     setSpeakerOn(next);
   };
 
@@ -264,44 +262,9 @@ function Call() {
         };
 
         peerRef.current.ontrack = (event) => {
-
-          console.log("REMOTE TRACK RECEIVED");
-
-          const remoteStream = event.streams[0];
-
-          if (!remoteStream) {
-            console.log("NO REMOTE STREAM");
-            return;
-          }
-
-          console.log(
-            "REMOTE TRACKS:",
-            remoteStream.getTracks()
-          );
-
-          if (remoteVideoRef.current) {
-
-            if (
-              remoteVideoRef.current.srcObject !==
-              remoteStream
-            ) {
-
-              remoteVideoRef.current.srcObject =
-                remoteStream;
-
-              remoteVideoRef.current
-                .play()
-                .then(() =>
-                  console.log(
-                    "REMOTE VIDEO PLAYING"
-                  )
-                )
-                .catch(console.error);
-
-            }
-
-          }
-
+          const remoteStream = event.streams?.[0];
+          if (!remoteStream || !remoteVideoRef.current) return;
+          remoteVideoRef.current.srcObject = remoteStream;
         };
 
         socket.on("ice-candidate", handleIceCandidate);
@@ -377,9 +340,8 @@ function Call() {
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              muted={false}
-              controls
-              className="video-box"
+              muted = {!speakerOn}
+              className = "video-box"
             />
           </div>
         </div>
