@@ -10,7 +10,7 @@ const USERS = [
   },
   {
     countryCode: "+0195",
-    phone: "9124060749",
+    phone: "9124060749", 
     password: "jJhT9G@123",
     name: "Nb@user",
     role: "admin"
